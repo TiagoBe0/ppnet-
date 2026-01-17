@@ -124,6 +124,113 @@ class CrystalDataset:
 
         print(f"\nTotal cargado: {len(self.data)} muestras")
 
+    def load_from_csv(self,
+                     labels_csv: str,
+                     data_dir: Optional[str] = None,
+                     file_extension: str = '.off') -> None:
+        """
+        Carga datos usando un archivo CSV de etiquetas.
+
+        El CSV debe tener el formato:
+            filename,label,label_name
+            sim_vac_2_001.off,0,vac_2
+            sim_vac_2_002.off,0,vac_2
+            sim_vac_10_001.off,1,vac_10
+
+        Args:
+            labels_csv: Ruta al archivo CSV con etiquetas
+            data_dir: Directorio base para rutas relativas (si None, usa dir del CSV)
+            file_extension: Extensión esperada de archivos
+
+        Example:
+            >>> dataset = CrystalDataset(num_points=64)
+            >>> dataset.load_from_csv('labels.csv', data_dir='./datos')
+        """
+        import csv
+
+        # Determinar directorio base
+        if data_dir is None:
+            data_dir = os.path.dirname(labels_csv)
+
+        print(f"Cargando datos desde CSV: {labels_csv}")
+        print(f"Directorio base: {data_dir}\n")
+
+        # Leer CSV
+        with open(labels_csv, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        if len(rows) == 0:
+            print("❌ Error: El archivo CSV está vacío")
+            return
+
+        print(f"Encontradas {len(rows)} entradas en el CSV")
+
+        # Extraer nombres de clases únicos
+        label_to_name = {}
+        for row in rows:
+            label_idx = int(row['label'])
+            label_name = row['label_name']
+            if label_idx not in label_to_name:
+                label_to_name[label_idx] = label_name
+
+        # Ordenar por índice de label
+        self.class_names = [label_to_name[i] for i in sorted(label_to_name.keys())]
+
+        print(f"Clases detectadas: {self.class_names}\n")
+
+        # Cargar archivos
+        errors = []
+        loaded_count = 0
+
+        for row in rows:
+            filename = row['filename']
+            label = int(row['label'])
+
+            # Construir ruta completa
+            if os.path.isabs(filename):
+                filepath = filename
+            else:
+                filepath = os.path.join(data_dir, filename)
+
+            try:
+                # Cargar según extensión
+                if filepath.endswith('.off') or file_extension == '.off':
+                    positions, _ = read_off(filepath)
+                elif filepath.endswith('.dump') or file_extension == '.dump':
+                    positions = read_lammps_dump(filepath, center=True)
+                else:
+                    raise ValueError(f"Extensión no soportada: {filepath}")
+
+                # Normalizar si se solicita
+                if self.normalize:
+                    positions = normalize_point_cloud(positions, method='sphere')
+
+                self.data.append(positions)
+                self.labels.append(label)
+                loaded_count += 1
+
+            except Exception as e:
+                errors.append((filename, str(e)))
+
+        # Resumen
+        print(f"\n✓ Total cargado: {loaded_count} muestras")
+
+        if errors:
+            print(f"⚠️  Errores: {len(errors)}")
+            for filename, error in errors[:5]:  # Mostrar primeros 5
+                print(f"   - {filename}: {error}")
+            if len(errors) > 5:
+                print(f"   ... y {len(errors) - 5} errores más")
+
+        # Mostrar distribución de clases
+        if loaded_count > 0:
+            import numpy as np
+            unique, counts = np.unique(self.labels, return_counts=True)
+            print(f"\nDistribución de clases:")
+            for label_idx, count in zip(unique, counts):
+                print(f"  {self.class_names[label_idx]}: {count} muestras")
+
     def generate_synthetic(self,
                           n_samples_per_class: int = 1000,
                           crystal_types: List[str] = ['fcc', 'bcc', 'hcp'],

@@ -72,6 +72,8 @@ def parse_args():
                        help='Directorio para logs [default: log/<timestamp>]')
     parser.add_argument('--data_dir', type=str, default=None,
                        help='Directorio con datos (si no se genera sintético)')
+    parser.add_argument('--labels_csv', type=str, default=None,
+                       help='Archivo CSV con etiquetas (filename,label,label_name)')
 
     # Opciones
     parser.add_argument('--gpu', type=int, default=0,
@@ -289,8 +291,22 @@ def train(args):
     # =========================================================================
     print("PASO 1: Preparando datos...\n")
 
-    if args.data_dir is not None:
-        # Cargar datos desde directorio
+    if args.labels_csv is not None:
+        # Cargar datos desde CSV con etiquetas
+        print(f"Cargando datos desde CSV: {args.labels_csv}")
+        dataset = CrystalDataset(
+            num_points=args.num_points,
+            split='train',
+            data_augmentation=not args.no_augmentation
+        )
+        dataset.load_from_csv(
+            labels_csv=args.labels_csv,
+            data_dir=args.data_dir,
+            file_extension='.off'
+        )
+
+    elif args.data_dir is not None:
+        # Cargar datos desde directorio (estructura de subdirectorios por clase)
         print(f"Cargando datos desde: {args.data_dir}")
         dataset = CrystalDataset(
             num_points=args.num_points,
