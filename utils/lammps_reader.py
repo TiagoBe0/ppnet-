@@ -50,6 +50,7 @@ class LAMMPSDumpReader:
         self.timestep = None
         self.natoms = None
         self.box_bounds = None
+        self.box_origin = None  # Para cajas con origen no-cero
         self.atoms_data = None
         self.atom_columns = []
 
@@ -83,11 +84,49 @@ class LAMMPSDumpReader:
 
             # Leer límites de la caja
             elif 'ITEM: BOX BOUNDS' in line:
-                self.box_bounds = np.zeros((3, 2))
+                # Detectar formato de la caja
+                box_header = line
+
+                # Leer las 3 líneas de bounds
+                box_lines = []
                 for j in range(3):
-                    bounds = lines[i + 1 + j].strip().split()
-                    self.box_bounds[j, 0] = float(bounds[0])
-                    self.box_bounds[j, 1] = float(bounds[1])
+                    box_lines.append(lines[i + 1 + j].strip().split())
+
+                # Detectar formato: puede ser ortogonal simple o triclinico
+                if 'abc origin' in box_header or len(box_lines[0]) > 2:
+                    # Formato triclinico: cada línea tiene vectores de celda y origen
+                    # Línea 1: ax 0  0  origin_x  -> ax es el componente diagonal en x
+                    # Línea 2: 0  by 0  origin_y  -> by es el componente diagonal en y
+                    # Línea 3: 0  0  cz origin_z  -> cz es el componente diagonal en z
+                    self.box_bounds = np.zeros((3, 2))
+                    self.box_origin = np.zeros(3)
+
+                    for j in range(3):
+                        values = [float(v) for v in box_lines[j]]
+                        if len(values) == 4:
+                            # El componente diagonal está en la posición j de los primeros 3 valores
+                            # Línea 0: values[0] es ax
+                            # Línea 1: values[1] es by
+                            # Línea 2: values[2] es cz
+                            cell_vector_component = values[j]  # Componente diagonal correcto
+                            self.box_origin[j] = values[3]
+                            self.box_bounds[j, 0] = self.box_origin[j]
+                            self.box_bounds[j, 1] = self.box_origin[j] + cell_vector_component
+                        elif len(values) >= 2:
+                            # Formato simple: xlo xhi (retrocompatibilidad)
+                            self.box_bounds[j, 0] = values[0]
+                            self.box_bounds[j, 1] = values[1]
+                            self.box_origin = None
+                        else:
+                            raise ValueError(f"Formato de BOX BOUNDS no reconocido: {box_lines[j]}")
+                else:
+                    # Formato ortogonal simple: xlo xhi
+                    self.box_bounds = np.zeros((3, 2))
+                    for j in range(3):
+                        self.box_bounds[j, 0] = float(box_lines[j][0])
+                        self.box_bounds[j, 1] = float(box_lines[j][1])
+                    self.box_origin = None
+
                 i += 4
 
             # Leer datos atómicos
