@@ -166,7 +166,7 @@ def pointnet_sa_module_msg(xyz, points, npoint, radius_list, nsample_list, mlp_l
             use_nchw: bool, if True, use NCHW data format for conv2d, which is usually faster than NHWC format
         Return:
             new_xyz: (batch_size, npoint, 3) TF tensor
-            new_points: (batch_size, npoint, \sum_k{mlp[k][-1]}) TF tensor
+            new_points: (batch_size, npoint, \\sum_k{mlp[k][-1]}) TF tensor
     '''
     data_format = 'NCHW' if use_nchw else 'NHWC'
     with tf.variable_scope(scope) as sc:
